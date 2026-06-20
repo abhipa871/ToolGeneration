@@ -1,0 +1,4 @@
+interface:
+  display_name: "Chat Memory Architecture"
+  short_description: "Design durable chat memory and storage"
+  default_prompt: "Use $design-chat-memory to design memory and database infrastructure for this chat application."

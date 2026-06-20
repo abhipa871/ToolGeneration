@@ -1,0 +1,4 @@
+interface:
+  display_name: "Next.js Chat Frontend"
+  short_description: "Build accessible streaming chat interfaces"
+  default_prompt: "Use $build-nextjs-chat-ui to implement the Next.js frontend for this chat application."
