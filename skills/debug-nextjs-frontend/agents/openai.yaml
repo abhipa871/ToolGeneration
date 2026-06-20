@@ -1,4 +1,0 @@
-interface:
-  display_name: "Debug Next.js Frontend"
-  short_description: "Diagnose Next.js UI and runtime failures"
-  default_prompt: "Use $debug-nextjs-frontend to diagnose this Next.js frontend problem."

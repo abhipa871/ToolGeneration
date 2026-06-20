@@ -1,4 +1,0 @@
-interface:
-  display_name: "Model Streaming Delivery"
-  short_description: "Stream model output across local and APIs"
-  default_prompt: "Use $deliver-model-streams to implement reliable model streaming for this chat application."

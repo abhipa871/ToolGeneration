@@ -144,7 +144,6 @@ The existing tests cover stream parsing across arbitrary byte boundaries, succes
 | --- | --- |
 | `.env.example` | Safe configuration template for all supported providers and optional Supabase settings. |
 | `.gitignore` | Excludes dependencies, Next.js output, coverage, secrets, and runtime logs. |
-| `AGENTS.md` | Repository conventions for architecture, testing, security, naming, and contributions. |
 | `README.md` | This project overview, setup guide, architecture reference, and file map. |
 | `package.json` | Project identity, npm scripts, runtime packages, and development dependencies. |
 | `package-lock.json` | npm-generated dependency lockfile for reproducible installs. Do not edit it manually. |
@@ -198,25 +197,6 @@ The existing tests cover stream parsing across arbitrary byte boundaries, succes
 | `tests/api-chat.test.ts` | Exercises the chat route with the demo provider and verifies invalid-request rejection. |
 | `tests/memory.test.ts` | Verifies cross-chat context injection, active-thread isolation, and conversation limits. |
 | `supabase/migrations/001_chat_memory.sql` | Optional Postgres schema for authenticated conversations/messages, indexes, RLS ownership policies, idempotency, and update timestamps. |
-
-### Repository-local Codex skills
-
-These files are development guidance for coding agents; they are not bundled into the web application.
-
-| File | Responsibility |
-| --- | --- |
-| `skills/build-nextjs-chat-ui/SKILL.md` | Workflow and guardrails for building the accessible Next.js chat interface. |
-| `skills/build-nextjs-chat-ui/references/chat-ui-patterns.md` | Detailed component, state, transcript, composer, responsive, and test patterns. |
-| `skills/build-nextjs-chat-ui/agents/openai.yaml` | Display metadata and default prompt for the UI-building skill. |
-| `skills/debug-nextjs-frontend/SKILL.md` | Reproduction-first workflow for diagnosing Next.js and React defects. |
-| `skills/debug-nextjs-frontend/references/diagnostic-playbook.md` | Symptom-specific checks for hydration, state, streams, routing, layout, and performance. |
-| `skills/debug-nextjs-frontend/agents/openai.yaml` | Display metadata and default prompt for the frontend-debugging skill. |
-| `skills/deliver-model-streams/SKILL.md` | Workflow and guardrails for reliable, cancellable model streaming. |
-| `skills/deliver-model-streams/references/streaming-protocols.md` | Transport choices, event design, adapter notes, robust parsing, and operational guidance. |
-| `skills/deliver-model-streams/agents/openai.yaml` | Display metadata and default prompt for the model-streaming skill. |
-| `skills/design-chat-memory/SKILL.md` | Workflow and guardrails for durable chat history and derived memory architecture. |
-| `skills/design-chat-memory/references/architecture.md` | Storage-layer choices, baseline schema, Supabase safety, and memory lifecycle guidance. |
-| `skills/design-chat-memory/agents/openai.yaml` | Display metadata and default prompt for the chat-memory skill. |
 
 ## Generated and local-only paths
 
