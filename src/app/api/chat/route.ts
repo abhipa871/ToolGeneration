@@ -1,5 +1,9 @@
 import type { ChatRequest, StreamEvent } from "@/lib/chat/types";
 import { getProvider } from "@/lib/providers/registry";
+import { createOpenAIProvider } from "@/lib/providers/openai";
+import { createClient } from "@/lib/supabase/server";
+import { auditCredentialEvent, getOpenAIKey } from "@/lib/openai/credentials";
+import { isGPTTextModel } from "@/lib/openai/models";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 120;
@@ -31,7 +35,22 @@ export async function POST(request: Request) {
     return Response.json({ error: "Invalid JSON body" }, { status: 400 });
   }
   if (!isValidRequest(payload)) return Response.json({ error: "Invalid chat request" }, { status: 400 });
-  const provider = getProvider(payload.providerId);
+  let ephemeralOpenAIKey = "";
+  let provider = getProvider(payload.providerId);
+  if (payload.providerId === "openai") {
+    if (!isGPTTextModel(payload.model)) return Response.json({ error: "Invalid GPT model" }, { status: 400 });
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return Response.json({ error: "Unauthorized" }, { status: 401 });
+    try {
+      ephemeralOpenAIKey = await getOpenAIKey(user.id) ?? "";
+    } catch {
+      return Response.json({ error: "OpenAI key storage is unavailable" }, { status: 503 });
+    }
+    if (!ephemeralOpenAIKey) return Response.json({ error: "Add an OpenAI API key before using GPT models" }, { status: 409 });
+    provider = createOpenAIProvider(ephemeralOpenAIKey);
+    void auditCredentialEvent(user.id, "used");
+  }
   if (!provider) return Response.json({ error: "Provider is not configured" }, { status: 404 });
 
   const encoder = new TextEncoder();
@@ -41,9 +60,13 @@ export async function POST(request: Request) {
     async pull(controller) {
       try {
         const next = await iterator.next();
-        if (next.done) return controller.close();
+        if (next.done) {
+          ephemeralOpenAIKey = "";
+          return controller.close();
+        }
         controller.enqueue(encoder.encode(`${JSON.stringify(next.value)}\n`));
       } catch (error) {
+        ephemeralOpenAIKey = "";
         const event: StreamEvent = {
           version: 1,
           type: "error",
@@ -58,6 +81,7 @@ export async function POST(request: Request) {
     },
     async cancel() {
       await iterator.return(undefined);
+      ephemeralOpenAIKey = "";
     },
   });
 

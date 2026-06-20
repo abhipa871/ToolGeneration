@@ -38,4 +38,19 @@ export type ProviderSummary = {
   defaultModel: string;
   configured: boolean;
   local: boolean;
+  models?: ModelSummary[];
+};
+
+export type ModelPricing = {
+  inputPerMillion: number;
+  outputPerMillion: number;
+  cachedInputPerMillion?: number;
+  currency: "USD";
+  sourceUrl: string;
+};
+
+export type ModelSummary = {
+  id: string;
+  name: string;
+  pricing?: ModelPricing;
 };

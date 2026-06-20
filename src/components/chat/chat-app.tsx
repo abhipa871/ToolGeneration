@@ -8,6 +8,8 @@ import {
   CircleStop,
   Copy,
   Database,
+  LogOut,
+  KeyRound,
   Menu,
   MessageSquareText,
   PanelLeftClose,
@@ -20,10 +22,12 @@ import {
 } from "lucide-react";
 import { FormEvent, KeyboardEvent, useEffect, useMemo, useRef, useState } from "react";
 import { parseEventStream } from "@/lib/chat/stream";
-import { BrowserConversationRepository } from "@/lib/chat/repository";
+import { SupabaseConversationRepository } from "@/lib/chat/repository";
 import { buildMessagesWithMemory } from "@/lib/chat/memory";
+import { createClient as createSupabaseClient } from "@/lib/supabase/client";
 import type { ChatMessage, Conversation, ProviderSummary } from "@/lib/chat/types";
 import { MessageContent } from "./message-content";
+import { OpenAIKeyDialog } from "./openai-key-dialog";
 
 const suggestions = [
   { title: "Design a small API", detail: "with clear error handling" },
@@ -32,7 +36,7 @@ const suggestions = [
   { title: "Plan a project", detail: "from idea to first release" },
 ];
 
-const repository = new BrowserConversationRepository();
+const repository = new SupabaseConversationRepository();
 
 function createId() {
   if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
@@ -59,7 +63,7 @@ function shortTitle(content: string) {
   return title.length > 42 ? `${title.slice(0, 42)}…` : title;
 }
 
-export function ChatApp() {
+export function ChatApp({ userEmail }: { userEmail: string }) {
   const [providers, setProviders] = useState<ProviderSummary[]>([]);
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [activeId, setActiveId] = useState("");
@@ -69,6 +73,7 @@ export function ChatApp() {
   const [providerOpen, setProviderOpen] = useState(false);
   const [copiedId, setCopiedId] = useState("");
   const [initializationError, setInitializationError] = useState("");
+  const [keyDialogOpen, setKeyDialogOpen] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
   const transcriptRef = useRef<HTMLDivElement>(null);
   const composerRef = useRef<HTMLTextAreaElement>(null);
@@ -89,7 +94,7 @@ export function ChatApp() {
         if (!data.providers?.length) throw new Error("No model providers are available");
         if (cancelled) return;
         setProviders(data.providers);
-        const saved = repository.list();
+        const saved = await repository.list();
         const initial = saved.length ? saved : [newConversation(data.providers[0])];
         setConversations(initial);
         setActiveId(initial[0].id);
@@ -117,9 +122,21 @@ export function ChatApp() {
     };
   }, []);
 
+  async function refreshProviders() {
+    const response = await fetch("/api/providers", { cache: "no-store" });
+    if (!response.ok) throw new Error("Unable to refresh providers");
+    const data = await response.json() as { providers: ProviderSummary[] };
+    setProviders(data.providers);
+  }
+
   useEffect(() => {
     if (!active) return;
-    repository.save(active);
+    const timeout = window.setTimeout(() => {
+      void repository.save(active).catch((error) => {
+        setInitializationError(error instanceof Error ? error.message : "Conversation could not be saved");
+      });
+    }, active.messages.some((message) => message.status === "streaming") ? 750 : 100);
+    return () => window.clearTimeout(timeout);
   }, [active]);
 
   useEffect(() => {
@@ -147,7 +164,9 @@ export function ChatApp() {
   }
 
   function deleteChat(id: string) {
-    repository.remove(id);
+    void repository.remove(id).catch((error) => {
+      setInitializationError(error instanceof Error ? error.message : "Conversation could not be deleted");
+    });
     setConversations((current) => {
       const remaining = current.filter((conversation) => conversation.id !== id);
       if (id === activeId) {
@@ -160,7 +179,17 @@ export function ChatApp() {
   }
 
   function chooseProvider(provider: ProviderSummary) {
+    if (provider.id === "openai" && !provider.configured) {
+      setProviderOpen(false);
+      setKeyDialogOpen(true);
+      return;
+    }
     updateActive((conversation) => ({ ...conversation, providerId: provider.id, model: provider.defaultModel }));
+    if (provider.id !== "openai") setProviderOpen(false);
+  }
+
+  function chooseModel(provider: ProviderSummary, model: string) {
+    updateActive((conversation) => ({ ...conversation, providerId: provider.id, model }));
     setProviderOpen(false);
   }
 
@@ -268,6 +297,12 @@ export function ChatApp() {
     window.setTimeout(() => setCopiedId(""), 1200);
   }
 
+  async function signOut() {
+    abortRef.current?.abort();
+    await createSupabaseClient().auth.signOut();
+    window.location.assign("/");
+  }
+
   if (!active) {
     return (
       <main className="loading-screen">
@@ -305,10 +340,11 @@ export function ChatApp() {
           ))}
         </nav>
         <div className="sidebar-footer">
-          <div className="storage-pill"><Database size={14} /><span>Cross-chat memory on · saved on this device</span></div>
+          <div className="storage-pill"><Database size={14} /><span>Cross-chat memory on · saved in Supabase</span></div>
           <div className="profile-row">
-            <span className="avatar avatar-user">P</span>
-            <span><strong>Local workspace</strong><small>Private by default</small></span>
+            <span className="avatar avatar-user">{userEmail.charAt(0).toUpperCase()}</span>
+            <span><strong>{userEmail}</strong><small>Private workspace</small></span>
+            <button className="profile-signout" onClick={() => void signOut()} aria-label="Sign out"><LogOut size={15} /></button>
           </div>
         </div>
       </aside>
@@ -333,17 +369,31 @@ export function ChatApp() {
               <div className="provider-menu">
                 <div className="provider-menu-heading">Choose a runtime</div>
                 {providers.map((provider) => (
-                  <button key={provider.id} onClick={() => chooseProvider(provider)}>
-                    <span className={`runtime-icon ${provider.local ? "local" : "cloud"}`}><Bot size={16} /></span>
-                    <span><strong>{provider.name}</strong><small>{provider.description}</small></span>
-                    {provider.id === active.providerId && <Check size={16} />}
-                  </button>
+                  <div className="provider-option" key={provider.id}>
+                    <button onClick={() => chooseProvider(provider)}>
+                      <span className={`runtime-icon ${provider.local ? "local" : "cloud"}`}><Bot size={16} /></span>
+                      <span><strong>{provider.name}</strong><small>{provider.description}</small></span>
+                      {provider.id === active.providerId && <Check size={16} />}
+                    </button>
+                    {provider.id === "openai" && provider.configured && active.providerId === "openai" && (
+                      <div className="model-options" aria-label="Available OpenAI models">
+                        <div className="model-options-heading"><span>Available GPT models</span><a href="https://openai.com/api/pricing/" target="_blank" rel="noreferrer">Official pricing</a></div>
+                        {provider.models?.map((model) => (
+                          <button className={`model-option ${active.model === model.id ? "selected" : ""}`} key={model.id} onClick={() => chooseModel(provider, model.id)}>
+                            <span><strong>{model.name}</strong><small>{model.pricing ? `$${model.pricing.inputPerMillion}/M input · $${model.pricing.outputPerMillion}/M output` : "Pricing not listed · check official pricing"}</small></span>
+                            {active.model === model.id && <Check size={14} />}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 ))}
               </div>
             )}
           </div>
           <div className="topbar-actions">
             <span className="status-chip"><span /> Workspace ready</span>
+            <button className="icon-button" onClick={() => setKeyDialogOpen(true)} aria-label="Manage API keys"><KeyRound size={18} /></button>
             <button className="icon-button" onClick={createChat} aria-label="New conversation"><Plus size={19} /></button>
           </div>
         </header>
@@ -409,6 +459,7 @@ export function ChatApp() {
           <p className="composer-note">Luma can make mistakes. Check important information.</p>
         </div>
       </main>
+      <OpenAIKeyDialog open={keyDialogOpen} onClose={() => setKeyDialogOpen(false)} onChanged={refreshProviders} />
     </div>
   );
 }
